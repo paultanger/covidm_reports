@@ -2,9 +2,9 @@ suppressPackageStartupMessages({
   require(data.table)
   require(qs)
 })
-
+setwd("~/Desktop/github/COVID_LIC/2020_05_05_archived_04_30_generated/afghanistan")
 .args <- if (interactive()) c(
-  "caboverde/peak.qs"
+  "001.qs"
 ) else commandArgs(trailingOnly = TRUE)
 
 refprobs <- c(lo.lo=0.025, lo=0.25, med=0.5, hi=0.75, hi.hi=0.975)
@@ -20,21 +20,24 @@ simfns <- sort(list.files(dirname(.args[1]), "\\d+\\.qs", full.names = TRUE))
 #   res
 # }
 
+# this reads the qs file
 ref <- qread(simfns[1])
 
+# this melts with one col for all t for all runs
 expander <- data.table(expand.grid(
   run=1:max(ref$run),
   age=factor(c(levels(ref$age), "all"), ordered = TRUE),
   t=1:365
 ))
 
+# this adds compartments listed below
 inc.expander <- data.table(expand.grid(
   run=1:max(ref$run),
   age=factor(c(levels(ref$age), "all"), ordered = TRUE),
   compartment=c("cases","death_o", "E"),
   t=1:365
 ))
-
+# this adds the other ones
 prev.expander <- data.table(expand.grid(
   run=1:max(ref$run),
   age=factor(c(levels(ref$age), "all"), ordered = TRUE),
@@ -42,6 +45,7 @@ prev.expander <- data.table(expand.grid(
   t=1:365
 ))
 
+# this does all together..
 all.expand <- data.table(expand.grid(
   run=1:max(ref$run),
   age=factor(c(levels(ref$age), "all"), ordered = TRUE),
@@ -49,6 +53,7 @@ all.expand <- data.table(expand.grid(
   t=1:365
 ))
 
+# this is a function - compiles things and also gets quantile diffs
 full <- function(dt, scen_id) {
   inc <- dt[inc.expander, on=.(run, age, compartment, t)]
   inc[is.na(value), value := 0L]
@@ -123,6 +128,7 @@ combine_hosp_p <- function(dt) {
   comb[, .(value = sum(value), compartment = "hosp_p"), keyby=.(run, t, age)]
 }
 
+# let's see if we can recalculate the alls.qs file
 calcAll <- function(dt) {
   hospdt <- combine_hosp_p(dt)
   rbind(
@@ -142,6 +148,26 @@ calcAll <- function(dt) {
 }
 
 refvalues <- calcAll(ref)
+
+# so if we get the median of the all ages group for all runs from this?
+allages = refvalues[age == "all" & compartment == "cases" & measure == "peak"]
+# crazy wild variation in these peaks!
+hist(allages$t)
+# peak dist is normal.. from 500 runs..??
+hist(allages$value)
+# well this is sort of what we see in peak and alls!
+median(allages$t) # same as peak
+median(allages$value) # a bit diff.. 285259
+refprobs <- c(lo.lo=0.025, lo=0.25, med=0.5, hi=0.75, hi.hi=0.975)
+qspeak <- quantile(allages$value, probs = refprobs)
+qst <- quantile(allages$t, probs = refprobs)
+# what if we get the quantiles of the age groups for each run first
+allagesdis = refvalues[age != "all" & compartment == "cases" & measure == "peak"]
+median(allagesdis$t)
+median(allagesdis$value)
+# maybe do it by run first
+allagesdisMed = allagesdis[,list(median=median(value)),by=run]
+median(allagesdisMed$median)
 
 accref <- refvalues[measure == "acc"][all.expand, on=.(run, compartment, age, t), roll = T, rollends = c(F, T)]
 accref[is.na(value), value := 0 ]
